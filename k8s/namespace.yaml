@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: universal-cms
+  labels:
+    name: universal-cms
+    app.kubernetes.io/name: universal-cms
+    app.kubernetes.io/component: infrastructure

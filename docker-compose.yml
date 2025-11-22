@@ -1,0 +1,183 @@
+version: '3.8'
+
+services:
+  # API Gateway - Entry point for all requests
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - COMPONENT_SERVICE_URL=http://component-service:3001
+      - PAGE_SERVICE_URL=http://page-service:3002
+      - PLUGIN_SERVICE_URL=http://plugin-service:3003
+      - CONFIG_SERVICE_URL=http://config-service:3004
+    depends_on:
+      - component-service
+      - page-service
+      - plugin-service
+      - config-service
+    networks:
+      - cms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "dist/index.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Component Service - Manages components and registry
+  component-service:
+    build:
+      context: ./services/component-service
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+    networks:
+      - cms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "dist/index.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Page Service - Manages page building and rendering
+  page-service:
+    build:
+      context: ./services/page-service
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - COMPONENT_SERVICE_URL=http://component-service:3001
+      - NODE_ENV=production
+    depends_on:
+      - component-service
+    networks:
+      - cms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "dist/index.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Plugin Service - Manages plugin lifecycle
+  plugin-service:
+    build:
+      context: ./services/plugin-service
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - NODE_ENV=production
+    networks:
+      - cms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "dist/index.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Configuration Service - Manages configuration and themes
+  config-service:
+    build:
+      context: ./services/config-service
+      dockerfile: Dockerfile
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+      - NODE_ENV=production
+    networks:
+      - cms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "dist/index.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Reverse Proxy (Optional - for production)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api-gateway
+    networks:
+      - cms-network
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # Monitoring (Optional)
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    networks:
+      - cms-network
+    profiles:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3100:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - cms-network
+    profiles:
+      - monitoring
+
+networks:
+  cms-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  grafana-storage:
+
+# Optional: For development with live reloading
+x-developer:
+  volumes:
+    - ./services/shared:/app/services/shared:ro
+  environment:
+    - NODE_ENV=development
+  command: npm run dev
